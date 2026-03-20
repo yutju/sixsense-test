@@ -1,3 +1,4 @@
+# security.tf
 # ============================================================
 # Bastion Host SG (수정 없음)
 # ============================================================
@@ -48,7 +49,7 @@ resource "aws_security_group" "nat_sg" {
 }
 
 # ============================================================
-# Private Service SG (K3s, Kafka, Grafana용 공용)
+# Private Service SG (K3s, Kafka, Grafana, Prometheus용 공용)
 # ============================================================
 resource "aws_security_group" "private_sg" {
   name        = "private-service-sg"
@@ -107,6 +108,16 @@ resource "aws_security_group" "private_sg" {
   tags = { Name = "private-service-sg" }
 }
 
+resource "aws_security_group_rule" "allow_prometheus_scraping" {
+  type                     = "ingress"
+  from_port                = 9100
+  to_port                  = 9100
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.private_sg.id
+  source_security_group_id = aws_security_group.private_sg.id
+  description              = "Allow Prometheus to scrape metrics from other nodes"
+}  
+
 # ============================================================
 # RDS 전용 보안 그룹
 # ============================================================
@@ -156,4 +167,66 @@ resource "aws_security_group" "alb_sg" {
   }
 
   tags = { Name = "sixsense-alb-sg" }
+}
+
+
+# ============================================================
+# Prometheus EC2 Service Discovery를 위한 IAM 설정
+# ============================================================
+
+# 1. IAM Role: EC2 서비스가 이 역할을 맡을 수 있도록 설정
+resource "aws_iam_role" "prometheus_role" {
+  name = "sixsense-prometheus-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# 2. IAM Policy Attachment: EC2 정보를 읽어올 수 있는 권한 부여
+resource "aws_iam_role_policy_attachment" "prometheus_read_only" {
+  role       = aws_iam_role.prometheus_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
+}
+
+# 3. IAM Instance Profile: 실제 EC2 인스턴스 리소스에 연결할 프로필
+resource "aws_iam_instance_profile" "prometheus_profile" {
+  name = "sixsense-prometheus-instance-profile"
+  role = aws_iam_role.prometheus_role.name
+}
+
+# ============================================================
+# Prometheus 추가 보안 규칙 (9090 Web UI 접속 허용)
+# ============================================================
+
+# VPC 내부 또는 Bastion에서 프로메테우스 웹 대시보드(9090)에 접속할 수 있도록 허용
+resource "aws_security_group_rule" "allow_prometheus_web_ui" {
+  type              = "ingress"
+  from_port         = 9090
+  to_port           = 9090
+  protocol          = "tcp"
+  security_group_id = aws_security_group.private_sg.id
+  cidr_blocks       = [var.vpc_cidr] # VPC 내부 어디서든 접속 가능
+  description       = "Allow access to Prometheus Web UI"
+}
+
+
+# [추가] Bastion Host가 프로메테우스의 메트릭 수집을 허용하도록 설정
+resource "aws_security_group_rule" "allow_prometheus_to_bastion" {
+  type                     = "ingress"
+  from_port                = 9100
+  to_port                  = 9100
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.bastion_sg.id      # 문을 열 대상 (Bastion)
+  source_security_group_id = aws_security_group.private_sg.id      # 들어올 수 있는 놈 (Prometheus가 속한 SG)
+  description              = "Allow Prometheus Server to scrape metrics from Bastion"
 }

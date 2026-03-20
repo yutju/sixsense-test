@@ -1,3 +1,4 @@
+# compute.tf
 # ============================================================
 # 앤서블용 IAM Role 설정 추가
 # ============================================================
@@ -24,6 +25,31 @@ resource "aws_iam_role_policy_attachment" "ec2_readonly" {
 resource "aws_iam_instance_profile" "ansible_profile" {
   name = "sixsense-ansible-profile"
   role = aws_iam_role.ansible_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "prometheus_sd_read" {
+  role       = aws_iam_role.ansible_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess" 
+}
+
+resource "aws_iam_role_policy" "prometheus_tag_read" {
+  name = "sixsense-prometheus-tag-read"
+  role = aws_iam_role.ansible_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeTags",
+          "ec2:DescribeRegions"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 # ============================================================
@@ -96,6 +122,7 @@ resource "aws_instance" "k3s_master" {
     Name    = "K3s-Master"
     Role    = "master"      # Ansible 그룹: @master
     Project = "SixSense"
+    Monitor = "true"
   }
 }
 
@@ -115,6 +142,26 @@ resource "aws_instance" "k3s_worker" {
     Name    = "K3s-Worker-1"
     Role    = "worker"      # Ansible 그룹: @worker
     Project = "SixSense"
+    Monitor = "true"
+  }
+}
+
+resource "aws_instance" "k3s_worker_2" {
+  ami                    = var.ami_id
+  instance_type          = "t3.small"
+  subnet_id              = aws_subnet.private_subnet_1.id
+  vpc_security_group_ids = [aws_security_group.private_sg.id]
+  key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.ansible_profile.name
+  private_ip             = var.k3s_worker_2_private_ip
+
+  depends_on = [aws_instance.k3s_master]
+
+  tags = {
+    Name    = "K3s-Worker-2"
+    Role    = "worker"       # Ansible 그룹: @worker (동일하게 유지)
+    Project = "SixSense"
+    Monitor = "true"       
   }
 }
 
@@ -144,7 +191,7 @@ resource "aws_instance" "kafka_server" {
 # Grafana 모니터링 서버
 resource "aws_instance" "grafana_server" {
   ami                    = var.ami_id
-  instance_type          = var.instance_type
+  instance_type          = "c7i-flex.large"
   subnet_id              = aws_subnet.private_subnet_2.id
   vpc_security_group_ids = [aws_security_group.private_sg.id]
   key_name               = var.key_name
@@ -156,6 +203,7 @@ resource "aws_instance" "grafana_server" {
   tags = {
     Name    = "Grafana-Server"
     Role    = "monitoring"  
+    Monitor = "true"
     Project = "SixSense"
   }
 }
@@ -193,3 +241,4 @@ resource "aws_db_instance" "rds_instance" {
     Project = "SixSense"
   }
 }
+

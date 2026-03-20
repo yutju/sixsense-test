@@ -1,5 +1,5 @@
 global:
-  scrape_interval: 15s            # 기본 15초인데 인스턴스 스펙때문에 오류 생기면 30초로 수정해야됨 
+  scrape_interval: 15s
   evaluation_interval: 15s
 
 scrape_configs:
@@ -7,10 +7,26 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # K3s 모든 노드들의 메트릭을 수집하기 위한 설정 (Node Exporter용)
-  - job_name: 'k3s-nodes'
-    static_configs:
-      - targets:
-        {% for host in groups['all'] %}
-        - "{{ hostvars[host]['ansible_host'] }}:9100"
-        {% endfor %}
+  # EC2 Service Discovery 설정 (Role 기반)
+  - job_name: 'ec2-nodes'
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 9100
+    relabel_configs:
+      # 1. 'Role' 태그가 있는 인스턴스만 수집
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: '.+'
+        action: keep
+
+      # 2. 'instance' 라벨을 'Name' 태그 값으로 표시
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: instance
+
+      # 3. 'role' 라벨 생성
+      - source_labels: [__meta_ec2_tag_Role]
+        target_label: role
+
+      # 4. 프라이빗 IP 주소 매핑
+      - source_labels: [__meta_ec2_private_ip]
+        replacement: '${1}:9100'
+        target_label: __address__

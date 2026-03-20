@@ -1,3 +1,4 @@
+# variables.tf
 # ============================================================
 # [Comment] 인프라 공통 변수 설정
 # ============================================================
@@ -76,6 +77,11 @@ variable "k3s_master_private_ip" {
 variable "k3s_worker_private_ip" {
   description = "K3s Worker 노드 프라이빗 IP"
   default     = "10.0.11.20"
+}
+
+variable "k3s_worker_2_private_ip" {
+  description = "K3s Worker 노드 2 프라이빗 IP"
+  default     = "10.0.11.30"
 }
 
 variable "kafka_private_ip" {
