@@ -4,7 +4,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # 키 파일 이름을 변수로 처리 (환경 변수가 없으면 기본값 practice.pem)
-KEY_NAME="${KEY_NAME:-practice.pem}"
+KEY_NAME="${KEY_NAME:-sixsense-test.pem}"
 KEY_PATH="$SCRIPT_DIR/../$KEY_NAME"
 
 BASTION_NAME_TAG="Bastion-Host"
