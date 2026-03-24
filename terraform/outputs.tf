@@ -3,8 +3,8 @@
 # 접속 지점 (Public)
 # ============================================================
 output "bastion_public_ip" {
-  description = "Bastion Host 퍼블릭 IP (SSH 진입점)"
-  value       = aws_instance.bastion.public_ip
+  description = "Bastion Host 고정 퍼블릭 IP (SSH 진입점)"
+  value       = data.aws_eip.bastion_eip.public_ip
 }
 
 # ============================================================

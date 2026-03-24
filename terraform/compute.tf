@@ -250,3 +250,17 @@ resource "aws_db_instance" "rds_instance" {
   }
 }
 
+# ============================================================
+# 고정 IP(EIP) 연결 (Bastion Host)
+# ============================================================
+
+data "aws_eip" "bastion_eip" {
+  tags = {
+    Name = "sixsense-bastion-eip" # 콘솔에서 입력한 태그 값
+  }
+}
+
+resource "aws_eip_association" "eip_assoc" {
+  instance_id   = aws_instance.bastion.id
+  allocation_id = data.aws_eip.bastion_eip.id
+}
