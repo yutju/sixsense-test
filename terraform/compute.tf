@@ -155,6 +155,13 @@ resource "aws_launch_template" "k3s_worker" {
     apt-get update -y
     apt-get install -y curl
 
+    swapoff -a
+    sed -i.bak '/\sswap\s/s/^/#/' /etc/fstab
+    cat >/etc/sysctl.d/99-kubernetes-swap.conf <<'EOC'
+    vm.swappiness=0
+    EOC
+    sysctl --system
+
     curl -sfL https://get.k3s.io | \
       K3S_URL="https://${aws_instance.k3s_master.private_ip}:6443" \
       K3S_TOKEN="${random_password.k3s_token.result}" \
