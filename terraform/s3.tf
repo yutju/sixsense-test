@@ -1,5 +1,3 @@
-# s3.tf
-
 # ============================================================
 # 1. 전역 중복 방지를 위한 랜덤 문자열 생성
 # ============================================================
@@ -10,7 +8,7 @@ resource "random_string" "s3_suffix" {
 }
 
 # ============================================================
-# 2. S3 버킷 생성
+# 2. S3 버킷 생성 (PDF 저장용)
 # ============================================================
 resource "aws_s3_bucket" "pdf_storage" {
   bucket = "sixsense-pdf-storage-${random_string.s3_suffix.result}"
@@ -34,46 +32,32 @@ resource "aws_s3_bucket_public_access_block" "pdf_storage_block" {
 }
 
 # ============================================================
-# 4. S3 수명 주기 (Lifecycle) - 15일 후 자동 삭제
+# 4. S3 수명 주기 (Lifecycle)
 # ============================================================
 resource "aws_s3_bucket_lifecycle_configuration" "pdf_storage_lifecycle" {
   bucket = aws_s3_bucket.pdf_storage.id
 
   rule {
-    id     = "delete-after-15-days"
+    id     = "transition-to-glacier-and-delete"
     status = "Enabled"
 
+    transition {
+      days          = 15
+      storage_class = "GLACIER" 
+    }
+
     expiration {
-      days = 15 # 15일 경과 시 삭제
+      days = 365 
     }
   }
 }
 
 # ============================================================
-# 5. IAM User 생성 (앱 서버용)
+# 5. IAM 정책
 # ============================================================
-resource "aws_iam_user" "app_user" {
-  name = "sixsense-app-user"
-  path = "/"
-
-  tags = {
-    Project = "SixSense"
-  }
-}
-
-# ============================================================
-# 6. IAM Access Key 발급
-# ============================================================
-resource "aws_iam_access_key" "app_user_key" {
-  user = aws_iam_user.app_user.name
-}
-
-# ============================================================
-# 7. IAM 최소 권한 정책 (Policy) 부여
-# ============================================================
-resource "aws_iam_user_policy" "app_user_s3_policy" {
-  name = "sixsense-s3-access-policy"
-  user = aws_iam_user.app_user.name
+resource "aws_iam_policy" "app_s3_policy" {
+  name        = "sixsense-s3-access-policy"
+  description = "Policy for EC2 to access PDF S3 bucket securely"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -84,7 +68,8 @@ resource "aws_iam_user_policy" "app_user_s3_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.pdf_storage.arn
+          aws_s3_bucket.pdf_storage.arn,
+          aws_s3_bucket.backup_storage.arn
         ]
       },
       {
@@ -95,9 +80,58 @@ resource "aws_iam_user_policy" "app_user_s3_policy" {
           "s3:DeleteObject"
         ]
         Resource = [
-          "${aws_s3_bucket.pdf_storage.arn}/*"
+          "${aws_s3_bucket.pdf_storage.arn}/*",
+          "${aws_s3_bucket.backup_storage.arn}/*"
         ]
       }
     ]
   })
+}
+
+# ============================================================
+# 6. IAM Role에 권한 연결
+# ============================================================
+resource "aws_iam_role_policy_attachment" "app_s3_attach" {
+  role       = aws_iam_role.ansible_role.name 
+  policy_arn = aws_iam_policy.app_s3_policy.arn
+}
+
+# ============================================================
+# 7. 소산 백업 전용 S3 버킷 생성
+# ============================================================
+resource "aws_s3_bucket" "backup_storage" {
+  bucket = "sixsense-backup-storage-${random_string.s3_suffix.result}"
+
+  tags = {
+    Name    = "sixsense-backup-storage"
+    Project = "SixSense"
+  }
+}
+
+# ============================================================
+# 8. 백업 버킷 퍼블릭 액세스 완전 차단 (보안)
+# ============================================================
+resource "aws_s3_bucket_public_access_block" "backup_storage_block" {
+  bucket = aws_s3_bucket.backup_storage.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# ============================================================
+# 9. 백업 버킷 수명 주기 (Lifecycle) - 15일 후 자동 삭제
+# ============================================================
+resource "aws_s3_bucket_lifecycle_configuration" "backup_lifecycle" {
+  bucket = aws_s3_bucket.backup_storage.id
+
+  rule {
+    id     = "backup-expiration"
+    status = "Enabled"
+
+    expiration {
+      days = 15 # [Comment]: 15일이 지난 시스템 백업 파일은 자동 파기
+    }
+  }
 }

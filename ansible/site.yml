@@ -112,3 +112,10 @@
     - name: Kafka 설치 성공 리포트
       debug:
         msg: "Kafka가 KRaft 모드로 성공적으로 설치되어 실행 중입니다!"
+
+# 8. 리눅스 시스템 소산 백업 (S3) 및 크론탭 자동화
+- name: 9. 리눅스 시스템 소산 백업 (S3) 및 크론탭 자동화
+  hosts: all
+  become: yes
+  roles:
+    - { role: backup, tags: backup }

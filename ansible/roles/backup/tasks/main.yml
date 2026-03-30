@@ -1,0 +1,19 @@
+---
+- name: 1. AWS CLI 설치 (S3와 통신하기 위한 필수 도구)
+  apt:
+    name: awscli
+    state: present
+    update_cache: yes
+
+- name: 2. 백업 스크립트를 서버로 복사하고 실행 권한(+x) 부여
+  copy:
+    src: backup.sh
+    dest: /usr/local/bin/backup.sh 
+    mode: '0755'
+
+- name: 3. 크론탭(단축키) 등록 - 매일 새벽 3시에 자동 실행 (저장 주기)
+  cron:
+    name: "Daily S3 Offsite Backup"
+    minute: "0"
+    hour: "3"
+    job: "/usr/local/bin/backup.sh >> /var/log/s3_backup.log 2>&1"
