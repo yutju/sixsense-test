@@ -11,8 +11,8 @@ BASTION_NAME_TAG="Bastion-Host"
 REGION="ap-northeast-2"
 
 # 사설 IP 설정
-GRAFANA_IP="10.0.12.20"
-PROMETHEUS_IP="10.0.12.20"
+GRAFANA_IP="192.168.120.10"              # 이건 모니터링서버 사설ip 받으면 안바껴서 하드코딩함 
+PROMETHEUS_IP="192.168.120.10"
 
 echo ">>> 사용 중인 키 파일: $KEY_NAME"
 echo "[${REGION}]에서 Bastion(Name=${BASTION_NAME_TAG}) IP 조회 중..."
