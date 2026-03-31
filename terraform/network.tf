@@ -130,21 +130,12 @@ resource "aws_lb_target_group" "k3s_tg" {
   }
 }
 
-
+# ============================================================
+# ALB 80 포트 리스너 (HTTP로 접속하면 HTTPS로 강제 이동)
+# ============================================================
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main_alb.arn
   port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.k3s_tg.arn
-  }
-}
-
-/*resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.main_alb.arn
-  port              = "30080"
   protocol          = "HTTP"
 
   default_action {
@@ -158,56 +149,8 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-/*
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.main_alb.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = "여기에_나중에_발급받은_인증서_ARN_입력" 
-
-  default_action {
-    type             = "forward" 
-    target_group_arn = aws_lb_target_group.k3s_tg.arn
-  }
-}
-*/
-
 # ============================================================
-# 1. 임시 tls 인증서 생성
-# ============================================================
-
-# ① 개인 암호 키 만들기
-resource "tls_private_key" "test_key" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-# ② 방금 만든 키로 임시 인증서 발급하기
-resource "tls_self_signed_cert" "test_cert" {
-  private_key_pem = tls_private_key.test_key.private_key_pem
-
-  subject {
-    common_name  = "sixsense.duckdns.org" # 우리가 방금 만든 DuckDNS 주소
-    organization = "SixSense Test Infrastructure"
-  }
-
-  validity_period_hours = 24 # 24시간짜리 임시 인증서
-  allowed_uses = [
-    "key_encipherment",
-    "digital_signature",
-    "server_auth",
-  ]
-}
-
-# ③ 내가 만든 임시 인증서를 AWS ACM에 강제로 등록(Import)하기
-resource "aws_acm_certificate" "imported_cert" {
-  private_key      = tls_private_key.test_key.private_key_pem
-  certificate_body = tls_self_signed_cert.test_cert.cert_pem
-}
-
-# ============================================================
-# 2. ALB 443 리스너
+# ALB 443 포트 리스너 
 # ============================================================
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main_alb.arn
@@ -215,7 +158,7 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
   
-  certificate_arn   = aws_acm_certificate.imported_cert.arn 
+  certificate_arn   = aws_acm_certificate_validation.cert_val.certificate_arn
 
   default_action {
     type             = "forward"

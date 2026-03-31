@@ -15,5 +15,5 @@
   cron:
     name: "Daily S3 Offsite Backup"
     minute: "0"
-    hour: "3"
+    hour: "14"
     job: "/usr/local/bin/backup.sh >> /var/log/s3_backup.log 2>&1"

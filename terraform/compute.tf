@@ -52,6 +52,49 @@ resource "aws_iam_role_policy" "prometheus_tag_read" {
   })
 }
 
+resource "aws_iam_policy" "ansible_backup_s3_policy" {
+  name        = "sixsense-ansible-backup-s3-policy"
+  description = "Policy for Ansible Role to access Backup S3 bucket"
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [aws_s3_bucket.backup_storage.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+        Resource = ["${aws_s3_bucket.backup_storage.arn}/*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ansible_backup_attach" {
+  role       = aws_iam_role.ansible_role.name
+  policy_arn = aws_iam_policy.ansible_backup_s3_policy.arn
+}
+
+# ============================================================
+# K3s Worker 전용 IAM Role
+# ============================================================
+resource "aws_iam_role" "worker_role" {
+  name               = "sixsense-worker-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+}
+
+resource "aws_iam_instance_profile" "worker_profile" {
+  name = "sixsense-worker-profile"
+  role = aws_iam_role.worker_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "worker_ec2_readonly" {
+  role       = aws_iam_role.worker_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
+}
 # ============================================================
 # Bastion Host (Public 서브넷)
 # ============================================================
@@ -145,12 +188,25 @@ resource "aws_launch_template" "k3s_worker" {
   vpc_security_group_ids = [aws_security_group.private_sg.id]
 
   iam_instance_profile {
-    name = aws_iam_instance_profile.ansible_profile.name
+    name = aws_iam_instance_profile.worker_profile.name
+  }
+# 워커 노드 디스크 용량 12GB (gp3) 확장
+  block_device_mappings {
+    device_name = "/dev/sda1"
+
+    ebs {
+      volume_size           = 12
+      volume_type           = "gp3"
+      delete_on_termination = true
+    }
   }
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
     set -euxo pipefail
+
+    timedatectl set-timezone Asia/Seoul
+    systemctl restart systemd-timesyncd || true
 
     apt-get update -y
     apt-get install -y curl

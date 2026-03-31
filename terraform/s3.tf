@@ -92,7 +92,7 @@ resource "aws_iam_policy" "app_s3_policy" {
 # 6. IAM Role에 권한 연결
 # ============================================================
 resource "aws_iam_role_policy_attachment" "app_s3_attach" {
-  role       = aws_iam_role.ansible_role.name 
+  role       = aws_iam_role.worker_role.name
   policy_arn = aws_iam_policy.app_s3_policy.arn
 }
 
