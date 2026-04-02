@@ -7,26 +7,40 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # EC2 Service Discovery 설정 (Role 기반)
+  # 1. EC2 Service Discovery (기존 노드 익스포터 수집)
   - job_name: 'ec2-nodes'
     ec2_sd_configs:
       - region: ap-northeast-2
         port: 9100
     relabel_configs:
-      # 1. 'Role' 태그가 있는 인스턴스만 수집
       - source_labels: [__meta_ec2_tag_Role]
         regex: '.+'
         action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: instance
+      - source_labels: [__meta_ec2_tag_Role]
+        target_label: role
+      - source_labels: [__meta_ec2_private_ip]
+        replacement: '${1}:9100'
+        target_label: __address__
 
-      # 2. 'instance' 라벨을 'Name' 태그 값으로 표시
+  #  2. 워커 노드별 개별 웹 메트릭 수집 (대소문자 무시 필터 적용)
+  - job_name: 'sixsense-app-pods'
+    metrics_path: '/metrics'
+    scheme: http
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 30080
+    relabel_configs:
+      # 대소문자 가리지 않고 'worker'가 포함된 태그를 찾습니다.
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: '(?i)worker'
+        action: keep
+
       - source_labels: [__meta_ec2_tag_Name]
         target_label: instance
 
-      # 3. 'role' 라벨 생성
-      - source_labels: [__meta_ec2_tag_Role]
-        target_label: role
-
-      # 4. 프라이빗 IP 주소 매핑
+      # 프라이빗 IP 주소에 인그레스 노드포트(30080)를 결합
       - source_labels: [__meta_ec2_private_ip]
-        replacement: '${1}:9100'
+        replacement: '${1}:30080'
         target_label: __address__
