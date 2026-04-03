@@ -6,13 +6,13 @@
 resource "aws_security_group" "bastion_sg" {
   name        = "dmz-group"
   vpc_id      = aws_vpc.main.id
-  
+
   # DMZ 존 요구사항 (22, 443)
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] 
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
@@ -33,7 +33,7 @@ resource "aws_security_group" "bastion_sg" {
 }
 
 # ============================================================
-# NAT Instance SG 
+# NAT Instance SG
 # ============================================================
 resource "aws_security_group" "nat_sg" {
   name        = "nat-instance-sg"
@@ -44,7 +44,7 @@ resource "aws_security_group" "nat_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [var.vpc_cidr] 
+    cidr_blocks = [var.vpc_cidr]
   }
 
   egress {
@@ -64,7 +64,7 @@ resource "aws_security_group" "alb_sg" {
   name        = "sixsense-alb-sg"
   description = "Allow HTTP traffic to ALB"
   vpc_id      = aws_vpc.main.id
-  
+
   # 외부 사용자가 ALB로 들어오는 80, 443 포트 유지
   ingress {
     from_port   = 80
@@ -111,7 +111,7 @@ resource "aws_security_group" "private_sg" {
     from_port   = 6443
     to_port     = 6443
     protocol    = "tcp"
-    self        = true 
+    self        = true
   }
 
   ingress {
@@ -129,14 +129,14 @@ resource "aws_security_group" "private_sg" {
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
   }
-  
+
   ingress {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
   }
-  
+
   ingress {
     from_port   = 9100
     to_port     = 9100
@@ -176,7 +176,7 @@ resource "aws_security_group" "mgt_sg" {
   name        = "mgt-group"
   vpc_id      = aws_vpc.main.id
 
-  # 22(SSH - Bastion 허용), 3000(Grafana), 9090(Prometheus), 9100(Node Exporter)
+  # 22(SSH - Bastion 허용), 3000(Grafana), 9090(Prometheus), 9100(Node Exporter)    
   ingress {
     from_port       = 22
     to_port         = 22
@@ -265,38 +265,38 @@ resource "aws_iam_instance_profile" "prometheus_profile" {
 }
 
 # ============================================================
-# Prometheus 추가 보안 규칙 
+# Prometheus 추가 보안 규칙 (수정 및 최적화 완료 )
 # ============================================================
 
 # 1. Prometheus가 Server Farm(private_sg)의 9100 메트릭을 수집하도록 허용
 resource "aws_security_group_rule" "allow_prometheus_scraping" {
-  type                     = "ingress"
-  from_port                = 9100
-  to_port                  = 9100
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.private_sg.id   # 타겟: Server Farm
-  source_security_group_id = aws_security_group.mgt_sg.id       # 출발지: Mgt Group (Prometheus)
-  description              = "Allow Prometheus to scrape metrics from Server Farm"
-}  
+  type              = "ingress"
+  from_port         = 9100
+  to_port           = 9100
+  protocol          = "tcp"
+  security_group_id = aws_security_group.private_sg.id
+  cidr_blocks       = [var.vpc_cidr] # [수정] 통신 보장을 위해 CIDR로 변경
+  description       = "Allow internal VPC nodes to scrape metrics from Server Farm" 
+}
 
 # 2. Prometheus가 Bastion의 9100 메트릭을 수집하도록 허용
 resource "aws_security_group_rule" "allow_prometheus_to_bastion" {
-  type                     = "ingress"
-  from_port                = 9100
-  to_port                  = 9100
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.bastion_sg.id   # 타겟: Bastion
-  source_security_group_id = aws_security_group.mgt_sg.id       # 출발지: Mgt Group (Prometheus)
-  description              = "Allow Prometheus Server to scrape metrics from Bastion"
+  type              = "ingress"
+  from_port         = 9100
+  to_port           = 9100
+  protocol          = "tcp"
+  security_group_id = aws_security_group.bastion_sg.id
+  cidr_blocks       = [var.vpc_cidr] # [수정] Bastion 통신 보장을 위해 CIDR로 변경  
+  description       = "Allow internal VPC nodes to scrape metrics from Bastion"     
 }
 
-# 3. Prometheus가 Server Farm(private_sg)의 30080(Ingress NodePort) 메트릭을 수집하도록 허용
+# 3. Prometheus가 Server Farm(private_sg)의 30081(새로운 NodePort) 메트릭을 수집하도록 허용
 resource "aws_security_group_rule" "allow_prometheus_to_app_metrics" {
-  type                     = "ingress"
-  from_port                = 30080
-  to_port                  = 30080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.private_sg.id   # 타겟: Server Farm (워커 노드)
-  source_security_group_id = aws_security_group.mgt_sg.id       # 출발지: Mgt Group (Prometheus)
-  description              = "Allow Prometheus to scrape App metrics via NodePort"
+  type              = "ingress"
+  from_port         = 30081  # [수정] Nginx 충돌 방지를 위해 30081로 변경
+  to_port           = 30081  # [수정] Nginx 충돌 방지를 위해 30081로 변경
+  protocol          = "tcp"
+  security_group_id = aws_security_group.private_sg.id
+  cidr_blocks       = [var.vpc_cidr] # [수정] 통신 보장을 위해 CIDR로 변경
+  description       = "Allow Prometheus to scrape App metrics via NEW NodePort 30081"
 }
