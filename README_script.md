@@ -1,4 +1,4 @@
- 1. Core Workflow (배포 및 동기화)
+1. Core Workflow (배포 및 동기화)
  deploy-all.sh : 원클릭 전 배포
 인프라 구축의 시작과 끝을 담당합니다. Terraform으로 자원을 할당한 뒤, Ansible이 서비스 설정까지 이어받아 '무상태'에서 '서비스 가용' 상태까지 단번에 도달합니다.
 
