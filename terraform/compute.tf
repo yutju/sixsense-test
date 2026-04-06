@@ -238,6 +238,30 @@ resource "aws_instance" "k3s_master" {
 
   depends_on = [aws_instance.nat_instance]
 
+  user_data = <<-EOF
+    #!/bin/bash
+    set +e 
+
+    echo "Starting Network Rescue..."
+    rm -f /etc/netplan/*.yaml
+
+    cat <<EON > /etc/netplan/99-aws-net.yaml
+    network:
+      version: 2
+      ethernets:
+        ens5:
+          dhcp4: true
+    EON
+
+    netplan apply
+    sleep 5
+
+    ip link set ens5 up
+    dhclient ens5
+
+    systemctl restart k3s || true
+  EOF
+
   tags = {
     Name    = "K3s-Master"
     Role    = "master"      # Ansible 그룹: @master
@@ -369,6 +393,31 @@ resource "aws_instance" "kafka_server" {
   disable_api_termination = var.switch
 
   depends_on = [aws_instance.nat_instance]
+
+user_data = <<-EOF
+    #!/bin/bash
+    set +e 
+
+    echo "Starting Network Rescue..."
+
+    rm -f /etc/netplan/*.yaml
+
+    cat <<EON > /etc/netplan/99-aws-net.yaml
+    network:
+      version: 2
+      ethernets:
+        ens5:
+          dhcp4: true
+    EON
+
+    netplan apply
+    sleep 5
+    
+    ip link set ens5 up
+    dhclient ens5
+
+    systemctl restart kafka || true
+  EOF
 
   tags = {
     Name    = "Kafka-Server"

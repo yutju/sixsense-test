@@ -11,7 +11,7 @@
     dest: /usr/local/bin/backup.sh 
     mode: '0755'
 
-- name: 3. 크론탭(단축키) 등록 - 매일 새벽 3시에 자동 실행 (저장 주기)
+- name: 3. 크론탭(단축키) 등록 - 매일 오후 2시에 자동 실행 (저장 주기)
   cron:
     name: "Daily S3 Offsite Backup"
     minute: "0"

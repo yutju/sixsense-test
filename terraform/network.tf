@@ -31,13 +31,13 @@ resource "aws_subnet" "public_subnet_a" {
   tags = { Name = "public-subnet-a" }
 }
 
-# Public Subnet C (ALB 이중화용 - AZ를 b로 변경)
-resource "aws_subnet" "public_subnet_b" {
+# Public Subnet D (ALB 이중화용 - AZ를 d로 변경)
+resource "aws_subnet" "public_subnet_d" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidr_2
   map_public_ip_on_launch = true
-  availability_zone       = "${var.region}b" 
-  tags = { Name = "public-subnet-c" }
+  availability_zone       = "${var.region}d" 
+  tags = { Name = "public-subnet-d" }
 }
 
 # Private Subnet 1 (K3s Cluster 위치)
@@ -70,14 +70,14 @@ resource "aws_route_table" "public_rt" {
   tags = { Name = "public-rt" }
 }
 
-# 퍼블릭 서브넷 A, C 모두 라우팅 테이블 연결
+# 퍼블릭 서브넷 A, D 모두 라우팅 테이블 연결
 resource "aws_route_table_association" "public_assoc_a" {
   subnet_id      = aws_subnet.public_subnet_a.id
   route_table_id = aws_route_table.public_rt.id
 }
 
-resource "aws_route_table_association" "public_assoc_c" {
-  subnet_id      = aws_subnet.public_subnet_b.id
+resource "aws_route_table_association" "public_assoc_d" {
+  subnet_id      = aws_subnet.public_subnet_d.id
   route_table_id = aws_route_table.public_rt.id
 }
 
@@ -109,7 +109,7 @@ resource "aws_lb" "main_alb" {
   internal           = false 
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
-  subnets            = [aws_subnet.public_subnet_a.id, aws_subnet.public_subnet_b.id]
+  subnets            = [aws_subnet.public_subnet_a.id, aws_subnet.public_subnet_d.id]
   tags = { Name = "SixSense-ALB" }
 }
 
