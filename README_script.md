@@ -1,36 +1,62 @@
-🚀 SixSense Infrastructure Scripts Guide
-이 디렉토리는 SixSense 클라우드 네이티브 인프라를 효율적으로 관리하고 운영하기 위한 자동화 스크립트 모음을 포함하고 있습니다. 모든 스크립트는 프로젝트 루트에 위치한 PEM 키(sixsense-test.pem)를 참조하며, Terraform 및 Ansible과 연동됩니다.
+ 1. Core Workflow (배포 및 동기화)
+ deploy-all.sh : 원클릭 전 배포
+인프라 구축의 시작과 끝을 담당합니다. Terraform으로 자원을 할당한 뒤, Ansible이 서비스 설정까지 이어받아 '무상태'에서 '서비스 가용' 상태까지 단번에 도달합니다.
 
-📋 스크립트 목록 및 기능
-🛠 상세 사용법
-1. 초기 전체 배포 (deploy-all.sh)
-인프라를 처음부터 끝까지 한 번에 구축합니다. Terraform으로 AWS 리소스를 생성한 뒤 30초간 대기하며, 이후 Ansible을 통해 서비스 설정을 마칩니다.
+워크플로우: 인프라 빌드(TF) → 인스턴스 안정화 대기(30초) → 서비스 구성(Ansible).
 
-2. 내부 서버 SSH 접속 (bastion-connect.sh)
-보안을 위해 외부 노출이 차단된 Private IP 서버에 Bastion을 거쳐 접속합니다.
+실행: ./deploy-all.sh
 
-3. 서비스 상태 일괄 체크 (check-status.sh)
-현재 운영 중인 주요 서비스들의 상태를 한눈에 확인합니다.
+🔄 refresh-ip.sh : 유동 IP 동기화
+AWS 인스턴스 재시작 등으로 Bastion의 퍼블릭 IP가 변경되었을 때, 로컬의 설정 정보를 즉시 갱신합니다.
 
-K3s: 노드 상태 (kubectl get nodes)
+핵심기능: AWS API 실시간 조회를 통해 변경된 엔드포인트 정보를 Terraform 상태에 반영합니다.
 
-Kafka: 9092 포트 활성화 여부
+실행: ./refresh-ip.sh
 
-Grafana: 3000 포트 활성화 여부
+🔒 2. Connectivity & Security (보안 접속)
+🛡 bastion-connect.sh : 내부망 보안 접속
+외부 노출이 차단된 Private Subnet 내 서버들에 안전하게 접근합니다.
 
-4. 모니터링 대시보드 접속 (monitor-connect.sh)
-보안상 사설망에 있는 모니터링 서버의 대시보드를 로컬 환경으로 끌어옵니다.
+보안방식: SSH Jump Host(-J) 옵션을 활용해 PEM 키를 내부 서버로 복사하지 않고도 안전하게 경유 접속합니다.
 
-Grafana: 
+실행: ./bastion-connect.sh [대상_사설_IP]
 
-Prometheus: 
+🚇 monitor-connect.sh : 모니터링 터널링
+사설망에 격리된 모니터링 서버의 대시보드(Grafana/Prometheus)를 로컬 브라우저에서 바로 확인할 수 있도록 포트를 연결합니다.
 
-5. IP 정보 강제 동기화 (refresh-ip.sh)
-서버를 껐다 켰을 때 Bastion의 퍼블릭 IP가 변경되어 접속이 안 되는 경우 실행합니다. AWS 실시간 상태를 조회하여 Terraform Output을 갱신합니다.
+포트 맵핑: * Grafana: localhost:8000 접속 시 원격 3000 포트 연결
 
-⚠️ 주의 및 참고 사항
-PEM 키 설정: 모든 스크립트는 기본적으로 ../sixsense-test.pem 경로를 참조합니다. 다른 키를 사용할 경우 환경 변수로 지정하세요.
+Prometheus: localhost:9000 접속 시 원격 9090 포트 연결
 
-실행 권한: 스크립트 실행 전 실행 권한이 없다면 다음 명령을 입력하세요.
+실행: ./monitor-connect.sh
 
-종속성: aws-cli, terraform, ansible이 로컬 환경에 설치되어 있어야 하며, AWS 자격 증명(aws configure)이 완료된 상태여야 합니다.
+🔍 3. Observability (상태 점검)
+ check-status.sh : 통합 헬스체크
+현재 운영 중인 핵심 서비스들의 가용성을 한 번에 스캔합니다.
+
+점검대상:
+
+K3s: 클러스터 노드 정상 작동 여부
+
+Kafka: 메시지 브로커(9092) 응답 확인
+
+Grafana: 시각화 엔진(3000) 포트 활성 체크
+
+실행: ./check-status.sh
+
+⚙️ 설정 및 요구사항
+🔐 키 관리 (PEM)
+모든 스크립트는 루트 디렉토리의 PEM 키를 자동으로 인식합니다.
+
+기본값: sixsense-test.pem
+
+지정실행: KEY_NAME=my-key.pem ./script.sh
+
+📦 필수 도구
+AWS CLI (인증 및 조회)
+
+Terraform (상태 관리)
+
+Ansible (서버 구성)
+
+SSH Agent (키 포워딩)
