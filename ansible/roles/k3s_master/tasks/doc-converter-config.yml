@@ -1,0 +1,85 @@
+---
+- name: Doc Converter S3 bucket name Terraform output 조회
+  delegate_to: localhost
+  become: false
+  command:
+    argv:
+      - terraform
+      - "-chdir={{ k3s_master_terraform_dir }}"
+      - output
+      - -raw
+      - s3_bucket_name
+  register: doc_converter_s3_bucket_output
+  changed_when: false
+  tags: [k3s_master, doc_converter]
+
+- name: Doc Converter S3 bucket name 존재 확인
+  assert:
+    that:
+      - doc_converter_s3_bucket_output.stdout | trim | length > 0
+    fail_msg: "Terraform output s3_bucket_name 값을 읽지 못했습니다."
+  tags: [k3s_master, doc_converter]
+
+- name: Doc Converter ConfigMap 렌더링
+  template:
+    src: doc-converter-configmap.yaml.j2
+    dest: "{{ k3s_master_rendered_dir }}/doc-converter-configmap.yaml"
+    mode: "0644"
+  vars:
+    doc_converter_s3_bucket_name: "{{ doc_converter_s3_bucket_output.stdout | trim }}"
+  tags: [k3s_master, doc_converter]
+
+- name: Doc Converter ConfigMap 적용
+  command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - "{{ k3s_master_rendered_dir }}/doc-converter-configmap.yaml"
+  register: doc_converter_config_apply
+  changed_when: "'created' in doc_converter_config_apply.stdout or 'configured' in doc_converter_config_apply.stdout"
+  tags: [k3s_master, doc_converter]
+
+- name: Doc Converter Deployment 존재 확인
+  command:
+    argv:
+      - kubectl
+      - get
+      - deployment/doc-converter
+      - -n
+      - "{{ doc_converter_config_namespace }}"
+  register: doc_converter_deployment_check
+  changed_when: false
+  failed_when: false
+  when: doc_converter_config_apply.changed
+  tags: [k3s_master, doc_converter]
+
+- name: Doc Converter Deployment 재시작
+  command:
+    argv:
+      - kubectl
+      - rollout
+      - restart
+      - deployment/doc-converter
+      - -n
+      - "{{ doc_converter_config_namespace }}"
+  when:
+    - doc_converter_config_apply.changed
+    - doc_converter_deployment_check.rc == 0
+  tags: [k3s_master, doc_converter]
+
+- name: Doc Converter Deployment 재시작 완료 대기
+  command:
+    argv:
+      - kubectl
+      - rollout
+      - status
+      - deployment/doc-converter
+      - -n
+      - "{{ doc_converter_config_namespace }}"
+      - --timeout=5m
+  changed_when: false
+  when:
+    - doc_converter_config_apply.changed
+    - doc_converter_deployment_check.rc == 0
+  tags: [k3s_master, doc_converter]

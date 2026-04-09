@@ -7,6 +7,27 @@
     fail_msg: "k3s_token 을 Terraform output 기반으로 전달해야 합니다."
   tags: [k3s_master, token]
 
+- name: Swap 비활성화 설정
+  block:
+    - name: swap 비활성화
+      command: swapoff -a
+      changed_when: false
+
+    - name: /etc/fstab 의 swap 항목 주석 처리
+      replace:
+        path: /etc/fstab
+        regexp: '^(?!#)(.*\sswap\s+.*)$'
+        replace: '# \1'
+
+    - name: vm.swappiness 를 0 으로 설정
+      sysctl:
+        name: vm.swappiness
+        value: "0"
+        state: present
+        sysctl_set: true
+        reload: true
+  tags: [k3s_master, swap]
+
 - name: K3s 마스터 바이너리 설치 여부 확인
   stat:
     path: /usr/local/bin/k3s
@@ -83,3 +104,42 @@
     mode: "0600"
     remote_src: true
   tags: [k3s_master, config]
+
+- name: 사용자 bashrc 에 KUBECONFIG 기본값 설정
+  blockinfile:
+    path: "/home/{{ ansible_user }}/.bashrc"
+    create: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+    marker: "# {mark} SIXSENSE KUBECONFIG"
+    block: |
+      if [ -z "${KUBECONFIG:-}" ] && [ -f "$HOME/.kube/config" ]; then
+        export KUBECONFIG="$HOME/.kube/config"
+      fi
+  tags: [k3s_master, config]
+
+- name: Bootstrap 사전 점검
+  import_tasks: precheck.yml
+  tags: [k3s_master, bootstrap]
+
+- name: Argo CD bootstrap 적용
+  import_tasks: bootstrap.yml
+  when: (argocd_bootstrap_required | default(false)) or (eso_bootstrap_required | default(false))
+  tags: [k3s_master, bootstrap]
+
+- name: argocd CLI 설치
+  import_tasks: argocd-cli.yml
+  tags: [k3s_master, argocd, argocd_cli]
+
+- name: Doc Converter ConfigMap 적용
+  import_tasks: doc-converter-config.yml
+  tags: [k3s_master, doc_converter]
+
+- name: Kafka alias 적용
+  import_tasks: kafka-alias.yml
+  tags: [k3s_master, kafka_alias]
+
+- name: Root application 적용
+  import_tasks: root-app.yml
+  tags: [k3s_master, argocd, root_app]

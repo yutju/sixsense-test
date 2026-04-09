@@ -1,0 +1,236 @@
+---
+- name: Bootstrap 매니페스트 복사
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - label: Namespace bootstrap 매니페스트
+      src: "{{ k3s_master_bootstrap_namespaces_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/00-namespaces.yaml"
+    - label: External Secrets values 매니페스트
+      src: "{{ k3s_master_external_secrets_values_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-values.yaml"
+    - label: External Secrets helmchart 매니페스트
+      src: "{{ k3s_master_external_secrets_helmchart_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-helmchart.yaml"
+    - label: External Secrets ClusterSecretStore 매니페스트
+      src: "{{ k3s_master_external_secrets_clustersecretstore_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-clustersecretstore.yaml"
+    - label: Argo CD repo ExternalSecret 매니페스트
+      src: "{{ k3s_master_external_secrets_argocd_repo_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-argocd-root-repo.yaml"
+    - label: Argo CD values 매니페스트
+      src: "{{ k3s_master_argocd_values_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/argocd-values.yaml"
+    - label: Argo CD helmchart 매니페스트
+      src: "{{ k3s_master_argocd_helmchart_src }}"
+      dest: "{{ k3s_master_cluster_bootstrap_dir }}/argocd-helmchart.yaml"
+  loop_control:
+    label: "{{ item.label }}"
+  tags: [k3s_master, bootstrap]
+
+- name: Namespace bootstrap 적용
+  command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - "{{ k3s_master_cluster_bootstrap_dir }}/00-namespaces.yaml"
+  register: namespace_bootstrap_apply
+  changed_when: "'created' in namespace_bootstrap_apply.stdout or 'configured' in namespace_bootstrap_apply.stdout"
+  tags: [k3s_master, bootstrap]
+
+- name: External Secrets bootstrap
+  block:
+    - name: External Secrets values 적용
+      command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-values.yaml"
+      register: external_secrets_values_apply
+      changed_when: "'created' in external_secrets_values_apply.stdout or 'configured' in external_secrets_values_apply.stdout"
+      when: eso_bootstrap_required | default(false)
+
+    - name: External Secrets helmchart 적용
+      command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-helmchart.yaml"
+      register: external_secrets_helmchart_apply
+      changed_when: "'created' in external_secrets_helmchart_apply.stdout or 'configured' in external_secrets_helmchart_apply.stdout"
+      when: eso_bootstrap_required | default(false)
+
+    - name: External Secrets controller Deployment 이름 조회 대기
+      shell: >-
+        kubectl get deployment/{{ external_secrets_controller_deployment_name }} -n external-secrets
+        -o jsonpath='{.metadata.name}' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      register: external_secrets_wait
+      changed_when: false
+      retries: 20
+      delay: 15
+      until: (external_secrets_wait.stdout | trim) != ''
+      when: eso_bootstrap_required | default(false)
+
+    - name: External Secrets controller rollout 완료 대기
+      command:
+        argv:
+          - kubectl
+          - rollout
+          - status
+          - "deployment/{{ external_secrets_wait.stdout | trim }}"
+          - -n
+          - external-secrets
+          - --timeout=300s
+      register: external_secrets_rollout_status
+      changed_when: false
+      when: eso_bootstrap_required | default(false)
+
+    - name: External Secrets webhook Deployment 이름 조회 대기
+      shell: >-
+        kubectl get deployment/{{ external_secrets_webhook_deployment_name }} -n external-secrets
+        -o jsonpath='{.metadata.name}' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      register: external_secrets_webhook_wait
+      changed_when: false
+      retries: 20
+      delay: 15
+      until: (external_secrets_webhook_wait.stdout | trim) != ''
+      when: eso_bootstrap_required | default(false)
+
+    - name: External Secrets webhook rollout 완료 대기
+      command:
+        argv:
+          - kubectl
+          - rollout
+          - status
+          - "deployment/{{ external_secrets_webhook_wait.stdout | trim }}"
+          - -n
+          - external-secrets
+          - --timeout=300s
+      register: external_secrets_webhook_rollout_status
+      changed_when: false
+      when: eso_bootstrap_required | default(false)
+
+    - name: External Secrets CRD 등록 대기
+      shell: >-
+        kubectl get crd clustersecretstores.external-secrets.io externalsecrets.external-secrets.io >/dev/null 2>&1 &&
+        kubectl wait --for=condition=Established
+        crd/clustersecretstores.external-secrets.io
+        crd/externalsecrets.external-secrets.io
+        --timeout=30s >/dev/null 2>&1 &&
+        kubectl get --raw /apis/external-secrets.io/v1 2>/dev/null | grep -q '"name":"clustersecretstores"' &&
+        kubectl get --raw /apis/external-secrets.io/v1 2>/dev/null | grep -q '"name":"externalsecrets"'
+      args:
+        executable: /bin/bash
+      register: external_secrets_crd_wait
+      changed_when: false
+      retries: 20
+      delay: 15
+      until: external_secrets_crd_wait.rc == 0
+
+    - name: External Secrets webhook endpoint 준비 대기
+      shell: >-
+        kubectl get endpoints/{{ external_secrets_webhook_service_name }} -n external-secrets
+        -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      register: external_secrets_webhook_endpoints_wait
+      changed_when: false
+      retries: 20
+      delay: 15
+      until: (external_secrets_webhook_endpoints_wait.stdout | trim) != ''
+
+    - name: External Secrets ClusterSecretStore 적용
+      command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-clustersecretstore.yaml"
+      register: external_secrets_clustersecretstore_apply
+      changed_when: "'created' in external_secrets_clustersecretstore_apply.stdout or 'configured' in external_secrets_clustersecretstore_apply.stdout"
+
+    - name: Argo CD repo ExternalSecret 적용
+      command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_master_cluster_bootstrap_dir }}/external-secrets-argocd-root-repo.yaml"
+      register: external_secrets_argocd_repo_apply
+      changed_when: "'created' in external_secrets_argocd_repo_apply.stdout or 'configured' in external_secrets_argocd_repo_apply.stdout"
+
+    - name: Argo CD repo Secret 생성 대기
+      shell: >-
+        kubectl get secret/{{ argocd_repo_secret_name }} -n {{ argocd_repo_secret_namespace }}
+        -o jsonpath='{.data.githubAppID}{":"}{.data.githubAppInstallationID}{":"}{.data.githubAppPrivateKey}' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      register: argocd_repo_secret_wait
+      changed_when: false
+      retries: 20
+      delay: 15
+      until:
+        - (argocd_repo_secret_wait.stdout | trim) != ""
+        - (argocd_repo_secret_wait.stdout | trim).split(":") | length == 3
+  tags: [k3s_master, bootstrap]
+
+- name: Argo CD bootstrap
+  block:
+    - name: Argo CD values 적용
+      command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_master_cluster_bootstrap_dir }}/argocd-values.yaml"
+      register: argocd_values_apply
+      changed_when: "'created' in argocd_values_apply.stdout or 'configured' in argocd_values_apply.stdout"
+      when: argocd_bootstrap_required | default(false)
+
+    - name: Argo CD helmchart 적용
+      command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_master_cluster_bootstrap_dir }}/argocd-helmchart.yaml"
+      register: argocd_helmchart_apply
+      changed_when: "'created' in argocd_helmchart_apply.stdout or 'configured' in argocd_helmchart_apply.stdout"
+      when: argocd_bootstrap_required | default(false)
+
+    - name: Argo CD 서버 Deployment 이름 조회 대기
+      shell: >-
+        kubectl get deployment -n argocd -l {{ argocd_server_selector | quote }}
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      register: argocd_server_wait
+      changed_when: false
+      retries: 20
+      delay: 15
+      until: (argocd_server_wait.stdout | trim) != ''
+      when: argocd_bootstrap_required | default(false)
+
+    - name: Argo CD 서버 rollout 완료 대기
+      command:
+        argv:
+          - kubectl
+          - rollout
+          - status
+          - "deployment/{{ argocd_server_wait.stdout | trim }}"
+          - -n
+          - argocd
+          - --timeout=300s
+      register: argocd_rollout_status
+      changed_when: false
+      when: argocd_bootstrap_required | default(false)
+  tags: [k3s_master, bootstrap]

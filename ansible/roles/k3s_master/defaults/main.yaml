@@ -1,0 +1,42 @@
+---
+k3s_master_cluster_dir: "{{ playbook_dir }}/../cluster"
+k3s_master_terraform_dir: "{{ playbook_dir }}/../terraform"
+k3s_master_generated_dir: /opt/sixsense-bootstrap
+k3s_master_cluster_bootstrap_dir: "{{ k3s_master_generated_dir }}/cluster-bootstrap"
+k3s_master_rendered_dir: "{{ k3s_master_generated_dir }}/rendered"
+
+k3s_master_bootstrap_namespaces_src: "{{ k3s_master_cluster_dir }}/bootstrap/00-namespaces.yaml"
+k3s_master_external_secrets_values_src: "{{ k3s_master_cluster_dir }}/bootstrap/external-secrets/values.yaml"
+k3s_master_external_secrets_helmchart_src: "{{ k3s_master_cluster_dir }}/bootstrap/external-secrets/helmchart.yaml"
+k3s_master_external_secrets_clustersecretstore_src: "{{ k3s_master_cluster_dir }}/bootstrap/external-secrets/clustersecretstore.yaml"
+k3s_master_external_secrets_argocd_repo_src: "{{ k3s_master_cluster_dir }}/bootstrap/external-secrets/argocd-root-repo.externalsecret.yaml"
+k3s_master_argocd_values_src: "{{ k3s_master_cluster_dir }}/bootstrap/argocd/values.yaml"
+k3s_master_argocd_helmchart_src: "{{ k3s_master_cluster_dir }}/bootstrap/argocd/helmchart.yaml"
+
+external_secrets_controller_deployment_name: external-secrets
+external_secrets_webhook_deployment_name: external-secrets-webhook
+external_secrets_webhook_service_name: external-secrets-webhook
+argocd_repo_secret_name: argocd-root-repo
+argocd_repo_secret_namespace: argocd
+argocd_root_app_name: root-app
+
+# git repo URL
+argocd_root_repo_url: "https://github.com/prl7un/sixth-sense-team-project.git"
+argocd_root_target_revision: "main"
+argocd_root_path: "cluster/argocd/applications/apps"
+argocd_root_destination_server: "https://kubernetes.default.svc"
+argocd_root_destination_namespace: "argocd"
+argocd_server_selector: "app.kubernetes.io/part-of=argocd,app.kubernetes.io/component=server"
+argocd_cli_install_path: /usr/local/bin/argocd
+argocd_cli_tmp_path: /tmp/argocd-linux-amd64
+argocd_cli_port_forward_port: 18080
+argocd_cli_port_forward_pid: /tmp/argocd-cli-port-forward.pid
+argocd_cli_port_forward_log: /tmp/argocd-cli-port-forward.log
+argocd_cli_download_url: "https://127.0.0.1:{{ argocd_cli_port_forward_port }}/download/argocd-linux-amd64"
+
+kafka_alias_service_name: kafka
+kafka_alias_namespace: logging
+kafka_alias_port: 9092
+
+doc_converter_config_name: doc-converter-config
+doc_converter_config_namespace: apps

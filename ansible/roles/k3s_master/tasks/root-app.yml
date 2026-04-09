@@ -1,0 +1,18 @@
+---
+- name: Root application 렌더링
+  template:
+    src: root-app.yaml.j2
+    dest: "{{ k3s_master_rendered_dir }}/root-app.yaml"
+    mode: "0644"
+  tags: [k3s_master, argocd, root_app]
+
+- name: Root application 적용
+  command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - "{{ k3s_master_rendered_dir }}/root-app.yaml"
+  register: root_app_apply
+  changed_when: "'created' in root_app_apply.stdout or 'configured' in root_app_apply.stdout"
+  tags: [k3s_master, argocd, root_app]

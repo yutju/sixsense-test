@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ doc_converter_config_name }}
+  namespace: {{ doc_converter_config_namespace }}
+data:
+  S3_BUCKET_NAME: {{ doc_converter_s3_bucket_name | quote }}

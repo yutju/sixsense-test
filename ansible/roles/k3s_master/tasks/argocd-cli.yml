@@ -1,0 +1,83 @@
+---
+- name: argocd CLI 설치 여부 확인
+  stat:
+    path: "{{ argocd_cli_install_path }}"
+  register: argocd_cli_bin
+  tags: [k3s_master, argocd, argocd_cli]
+
+- name: Argo CD 서버 존재 확인
+  shell: >-
+    kubectl get svc -n argocd -l {{ argocd_server_selector | quote }}
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: argocd_server_service_lookup
+  changed_when: false
+  when: not argocd_cli_bin.stat.exists
+  tags: [k3s_master, argocd, argocd_cli]
+
+- name: Argo CD 서버 Service 이름 설정
+  set_fact:
+    argocd_server_service_name: "{{ argocd_server_service_lookup.stdout | trim }}"
+  when: not argocd_cli_bin.stat.exists
+  tags: [k3s_master, argocd, argocd_cli]
+
+- name: Argo CD 서버 Service 조회 실패 시 중단
+  fail:
+    msg: "Argo CD server service를 argocd namespace에서 찾지 못했습니다."
+  when:
+    - not argocd_cli_bin.stat.exists
+    - argocd_server_service_name == ""
+  tags: [k3s_master, argocd, argocd_cli]
+
+- name: argocd CLI 설치
+  when: not argocd_cli_bin.stat.exists
+  tags: [k3s_master, argocd, argocd_cli]
+  block:
+    - name: argocd CLI 다운로드용 port-forward 시작
+      shell: |
+        set -euo pipefail
+        nohup kubectl port-forward svc/{{ argocd_server_service_name }} -n argocd {{ argocd_cli_port_forward_port }}:443 > {{ argocd_cli_port_forward_log }} 2>&1 &
+        echo $! > {{ argocd_cli_port_forward_pid }}
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: argocd CLI 다운로드 포트 대기
+      wait_for:
+        host: 127.0.0.1
+        port: "{{ argocd_cli_port_forward_port }}"
+        timeout: 60
+      changed_when: false
+
+    - name: argocd CLI 다운로드
+      get_url:
+        url: "{{ argocd_cli_download_url }}"
+        dest: "{{ argocd_cli_tmp_path }}"
+        mode: "0755"
+        force: true
+        validate_certs: false
+
+    - name: argocd CLI 설치 경로에 복사
+      copy:
+        src: "{{ argocd_cli_tmp_path }}"
+        dest: "{{ argocd_cli_install_path }}"
+        mode: "0755"
+        remote_src: true
+
+  always:
+    - name: argocd CLI 다운로드용 port-forward 종료
+      shell: |
+        if [ -f "{{ argocd_cli_port_forward_pid }}" ]; then
+          kill "$(cat "{{ argocd_cli_port_forward_pid }}")" >/dev/null 2>&1 || true
+          rm -f "{{ argocd_cli_port_forward_pid }}"
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: argocd CLI 임시 파일 정리
+      file:
+        path: "{{ argocd_cli_tmp_path }}"
+        state: absent
+      changed_when: false

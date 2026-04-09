@@ -1,0 +1,47 @@
+---
+- name: Bootstrap 작업 디렉터리 생성
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ k3s_master_generated_dir }}"
+    - "{{ k3s_master_cluster_bootstrap_dir }}"
+    - "{{ k3s_master_rendered_dir }}"
+  tags: [k3s_master, bootstrap]
+
+- name: Argo CD 서버 Deployment 이름 조회
+  shell: >-
+    kubectl get deployment -n argocd -l {{ argocd_server_selector | quote }}
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: argocd_server_check
+  changed_when: false
+  tags: [k3s_master, bootstrap]
+
+- name: External Secrets Operator Deployment 이름 조회
+  shell: >-
+    kubectl get deployment/{{ external_secrets_controller_deployment_name }} -n external-secrets
+    -o jsonpath='{.metadata.name}' 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: external_secrets_controller_check
+  changed_when: false
+  tags: [k3s_master, bootstrap]
+
+- name: Argo CD bootstrap 필요 여부 설정
+  set_fact:
+    argocd_server_deployment_name: "{{ argocd_server_check.stdout | trim }}"
+    argocd_bootstrap_required: "{{ (argocd_server_check.stdout | trim) == '' }}"
+    eso_controller_deployment_name: "{{ external_secrets_controller_check.stdout | trim }}"
+    eso_bootstrap_required: "{{ (external_secrets_controller_check.stdout | trim) == '' }}"
+  tags: [k3s_master, bootstrap]
+
+- name: Kafka alias 대상 IP 설정
+  set_fact:
+    kafka_alias_ip: "{{ hostvars[groups['kafka'][0]].ansible_host | default(groups['kafka'][0]) }}"
+  when:
+    - groups['kafka'] is defined
+    - groups['kafka'] | length > 0
+  tags: [k3s_master, kafka_alias]

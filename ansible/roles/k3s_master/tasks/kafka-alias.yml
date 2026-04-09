@@ -1,0 +1,28 @@
+---
+- name: Kafka inventory 그룹 존재 확인
+  assert:
+    that:
+      - groups['kafka'] is defined
+      - groups['kafka'] | length > 0
+      - kafka_alias_ip is defined
+      - kafka_alias_ip | length > 0
+    fail_msg: "Kafka alias 를 만들려면 inventory 에 kafka 그룹과 대상 IP 가 필요합니다."
+  tags: [k3s_master, kafka_alias]
+
+- name: Kafka alias 렌더링
+  template:
+    src: kafka-alias.yaml.j2
+    dest: "{{ k3s_master_rendered_dir }}/kafka-alias.yaml"
+    mode: "0644"
+  tags: [k3s_master, kafka_alias]
+
+- name: Kafka alias 적용
+  command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - "{{ k3s_master_rendered_dir }}/kafka-alias.yaml"
+  register: kafka_alias_apply
+  changed_when: "'created' in kafka_alias_apply.stdout or 'configured' in kafka_alias_apply.stdout"
+  tags: [k3s_master, kafka_alias]

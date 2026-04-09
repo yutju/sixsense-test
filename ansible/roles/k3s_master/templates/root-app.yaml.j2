@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ argocd_root_app_name }}
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ argocd_root_repo_url }}
+    targetRevision: {{ argocd_root_target_revision }}
+    path: {{ argocd_root_path }}
+    directory:
+      include: "*.yaml"
+  destination:
+    server: {{ argocd_root_destination_server }}
+    namespace: {{ argocd_root_destination_namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
