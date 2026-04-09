@@ -1,3 +1,4 @@
+{# K3s 서버의 기본 설정과 노드 라벨/비활성 컴포넌트를 정의하는 템플릿입니다. #}
 write-kubeconfig-mode: "{{ k3s_server_write_kubeconfig_mode }}"
 disable:
 {% for component in k3s_server_disable_components %}
