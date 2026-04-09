@@ -472,6 +472,7 @@ resource "aws_db_instance" "rds_instance" {
   password               = var.db_password
   db_subnet_group_name   = aws_db_subnet_group.rds_sg_group.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  availability_zone      = "${var.region}d"
   skip_final_snapshot    = true
   deletion_protection    = var.switch
   apply_immediately      = true
